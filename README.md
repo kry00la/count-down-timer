@@ -33,6 +33,9 @@ Click **Set Time** to open the time picker. Enter hours, minutes, and seconds, t
 - **Resume** — continues from where it was paused.
 - **Reset** — clears the timer back to zero and unlocks the time picker.
 
+### Keyboard shortcut
+Press **Space** to start, pause, or resume the timer at any time — without reaching for the mouse. Spacebar is ignored when a number input is focused or the Set Time panel is open.
+
 ### Adjust on the fly
 The **+** and **−** circle buttons in the bottom-right corner add or subtract **1 minute** at any time — even while the timer is running.
 
@@ -49,9 +52,22 @@ A yellow screen flash fires when the countdown hits zero.
 
 ---
 
+## Sound
+
+### Tick sounds
+A click sound plays on each of the last 10 seconds of the countdown.
+
+### Finish alarm
+Three rising beeps play when the timer reaches 00:00.
+
+### Muting
+Open the **Set Time** panel — the speaker icon button next to Apply/Cancel toggles sound on and off. The icon turns red when muted. This preference is saved to `localStorage` and persists across refreshes.
+
+---
+
 ## Live (Display) tabs
 
-Display tabs show the timer full-screen with no controls — ideal for projecting on a screen or a second monitor.
+Display tabs show the timer full-screen with no controls — ideal for projecting on a screen or a second monitor. Tick and finish sounds play on Live tabs too.
 
 ### Take Control
 If you need to control the timer from a display tab, hover anywhere on the page to reveal the **profile icon button** in the bottom-left. Clicking it promotes that tab to Controller and demotes the previous one.

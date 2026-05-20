@@ -330,6 +330,26 @@
     body.display-mode:hover #btn-take-control {
       opacity: 1;
     }
+
+    /* ── Mute button ── */
+    #btn-mute {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #555;
+      padding: 0;
+      transition: border-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+    }
+
+    #btn-mute:hover { border-color: #444; color: #888; }
+    #btn-mute.muted { border-color: #ef4444; color: #ef4444; }
   </style>
 </head>
 <body>
@@ -389,15 +409,76 @@
     <div class="sp-actions">
       <button class="btn-pill"    id="btn-apply">Apply</button>
       <button class="btn-outline" id="btn-cancel">Cancel</button>
+      <button id="btn-mute" title="Mute finish alarm">
+        <svg id="icon-sound" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        </svg>
+        <svg id="icon-muted" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+        </svg>
+      </button>
     </div>
   </div>
 
   <script>
+    // ── Audio ─────────────────────────────────────────────────────────────────
+    let audioCtx = null;
+    let soundMuted = localStorage.getItem('synced-timer-muted') === 'true';
+
+    function getCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    function playTick() {
+      if (soundMuted) return;
+      const ctx  = getCtx();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.35, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.08);
+    }
+
+    function playFinishAlarm() {
+      if (soundMuted) return;
+      const ctx = getCtx();
+      // Three rising beeps
+      const beeps = [
+        { freq: 523, t: 0 },
+        { freq: 659, t: 0.22 },
+        { freq: 784, t: 0.44 },
+      ];
+      beeps.forEach(({ freq, t }) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + t);
+        gain.gain.setValueAtTime(0, ctx.currentTime + t);
+        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + t + 0.01);
+        gain.gain.setValueAtTime(0.5, ctx.currentTime + t + 0.15);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + t + 0.2);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.22);
+      });
+    }
+
     // ── Identity ──────────────────────────────────────────────────────────────
     const TAB_ID  = Math.random().toString(36).slice(2, 10);
     const channel = new BroadcastChannel('synced-timer-v1');
 
     // ── DOM ───────────────────────────────────────────────────────────────────
+    const btnMute       = document.getElementById('btn-mute');
+    const iconSound     = document.getElementById('icon-sound');
+    const iconMuted     = document.getElementById('icon-muted');
     const timeDisplayEl = document.getElementById('time-display');
     const finishFlash   = document.getElementById('finish-flash');
     const btnStart      = document.getElementById('btn-start');
@@ -433,6 +514,7 @@
     let tickInterval  = null;
     let lastHeartbeat = Date.now();
     let prevFinished  = false;
+    let lastTickedSec = -1;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const pad = n => String(n).padStart(2, '0');
@@ -492,7 +574,23 @@
       finishFlash.classList.remove('animate');
       void finishFlash.offsetWidth;
       finishFlash.classList.add('animate');
+      playFinishAlarm();
     }
+
+    function applyMuteUI() {
+      btnMute.classList.toggle('muted', soundMuted);
+      iconSound.style.display = soundMuted ? 'none' : '';
+      iconMuted.style.display = soundMuted ? '' : 'none';
+      btnMute.title = soundMuted ? 'Unmute finish alarm' : 'Mute finish alarm';
+    }
+
+    btnMute.addEventListener('click', () => {
+      soundMuted = !soundMuted;
+      localStorage.setItem('synced-timer-muted', soundMuted);
+      applyMuteUI();
+    });
+
+    applyMuteUI();
 
     // ── Full render ───────────────────────────────────────────────────────────
     function renderUI() {
@@ -500,6 +598,14 @@
       renderTimeDisplay(rem);
       if (state.finished && !prevFinished) triggerFinish();
       prevFinished = state.finished;
+
+      // Tick on each new second in the last 10
+      if (state.running && rem > 0 && rem <= 10 && rem !== lastTickedSec) {
+        lastTickedSec = rem;
+        playTick();
+      }
+      if (!state.running) lastTickedSec = -1;
+
       renderButtons();
     }
 
@@ -732,6 +838,17 @@
 
     inpM.addEventListener('blur', () => { inpM.value = Math.min(59, Math.max(0, parseInt(inpM.value)||0)); });
     inpS.addEventListener('blur', () => { inpS.value = Math.min(59, Math.max(0, parseInt(inpS.value)||0)); });
+
+    document.addEventListener('keydown', e => {
+      if (e.code !== 'Space') return;
+      if (!isController) return;
+      // Don't intercept spacebar while typing in inputs or the panel is open
+      if (document.activeElement.tagName === 'INPUT') return;
+      if (setPanel.classList.contains('open')) return;
+      e.preventDefault();
+      if (btnPause.style.display !== 'none') btnPause.click();
+      else if (btnStart.style.display !== 'none') btnStart.click();
+    });
 
     // ── Startup ───────────────────────────────────────────────────────────────
     loadState();
