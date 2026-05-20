@@ -455,10 +455,10 @@
   <!-- Bottom bar -->
   <div class="bottom-bar">
     <div class="bottom-left">
-      <button class="btn-outline controller-only" id="btn-set">Set Time</button>
-      <button class="btn-pill  controller-only" id="btn-start">Start</button>
-      <button class="btn-pill  controller-only" id="btn-pause" style="display:none">Pause</button>
-      <button class="btn-outline controller-only" id="btn-reset" style="display:none">Reset</button>
+      <button class="btn-outline controller-only" id="btn-set">Settings</button>
+      <button class="btn-pill   controller-only" id="btn-start">Start</button>
+      <button class="btn-pill   controller-only" id="btn-pause">Pause</button>
+      <button class="btn-outline controller-only" id="btn-reset">Reset</button>
       <button class="btn-circle display-only" id="btn-take-control" title="Take Control">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
@@ -473,7 +473,7 @@
 
   <!-- Set-time panel -->
   <div class="set-panel" id="set-panel">
-    <div class="sp-title">Set Time</div>
+    <div class="sp-title">Settings</div>
     <div class="sp-inputs">
       <div class="sp-group">
         <label for="inp-h">Hours</label>
@@ -503,7 +503,7 @@
         <svg id="icon-sound" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
         </svg>
-        <svg id="icon-muted" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+        <svg id="icon-muted" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
         </svg>
       </button>
@@ -539,13 +539,7 @@
     function playFinishAlarm() {
       if (soundMuted) return;
       const ctx = getCtx();
-      // Three rising beeps
-      const beeps = [
-        { freq: 523, t: 0 },
-        { freq: 659, t: 0.22 },
-        { freq: 784, t: 0.44 },
-      ];
-      beeps.forEach(({ freq, t }) => {
+      [{ freq: 523, t: 0 }, { freq: 659, t: 0.22 }, { freq: 784, t: 0.44 }].forEach(({ freq, t }) => {
         const osc  = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
@@ -561,31 +555,73 @@
       });
     }
 
+    // ── IndexedDB ─────────────────────────────────────────────────────────────
+    const dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open('synced-timer-db', 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore('video');
+      req.onsuccess  = e => resolve(e.target.result);
+      req.onerror    = e => reject(e.target.error);
+    });
+
+    async function idbGet() {
+      const db = await dbPromise;
+      return new Promise((resolve, reject) => {
+        const req = db.transaction('video', 'readonly').objectStore('video').get('bg');
+        req.onsuccess = e => resolve(e.target.result || null);
+        req.onerror   = e => reject(e.target.error);
+      });
+    }
+
+    async function idbPut(file) {
+      const db = await dbPromise;
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('video', 'readwrite');
+        tx.objectStore('video').put(file, 'bg');
+        tx.oncomplete = resolve;
+        tx.onerror    = e => reject(e.target.error);
+      });
+    }
+
+    async function idbDelete() {
+      const db = await dbPromise;
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('video', 'readwrite');
+        tx.objectStore('video').delete('bg');
+        tx.oncomplete = resolve;
+        tx.onerror    = e => reject(e.target.error);
+      });
+    }
+
     // ── Identity ──────────────────────────────────────────────────────────────
     const TAB_ID  = Math.random().toString(36).slice(2, 10);
     const channel = new BroadcastChannel('synced-timer-v1');
 
     // ── DOM ───────────────────────────────────────────────────────────────────
-    const btnMute       = document.getElementById('btn-mute');
-    const iconSound     = document.getElementById('icon-sound');
-    const iconMuted     = document.getElementById('icon-muted');
-    const timeDisplayEl = document.getElementById('time-display');
-    const finishFlash   = document.getElementById('finish-flash');
-    const btnStart      = document.getElementById('btn-start');
-    const btnPause      = document.getElementById('btn-pause');
-    const btnReset      = document.getElementById('btn-reset');
-    const btnSet        = document.getElementById('btn-set');
-    const btnApply      = document.getElementById('btn-apply');
-    const btnCancel     = document.getElementById('btn-cancel');
-    const btnTakeCtrl   = document.getElementById('btn-take-control');
-    const btnPlus       = document.getElementById('btn-plus');
-    const btnMinus      = document.getElementById('btn-minus');
-    const inpH          = document.getElementById('inp-h');
-    const inpM          = document.getElementById('inp-m');
-    const inpS          = document.getElementById('inp-s');
-    const setPanel      = document.getElementById('set-panel');
-    const spBackdrop    = document.getElementById('sp-backdrop');
-    const roleBadge     = document.getElementById('role-badge');
+    const bgVideo        = document.getElementById('bg-video');
+    const videoFileInput = document.getElementById('video-file-input');
+    const btnVideoPick   = document.getElementById('btn-video-pick');
+    const btnVideoClear  = document.getElementById('btn-video-clear');
+    const videoFilename  = document.getElementById('video-filename');
+    const btnMute        = document.getElementById('btn-mute');
+    const iconSound      = document.getElementById('icon-sound');
+    const iconMuted      = document.getElementById('icon-muted');
+    const timeDisplayEl  = document.getElementById('time-display');
+    const finishFlash    = document.getElementById('finish-flash');
+    const btnStart       = document.getElementById('btn-start');
+    const btnPause       = document.getElementById('btn-pause');
+    const btnReset       = document.getElementById('btn-reset');
+    const btnSet         = document.getElementById('btn-set');
+    const btnApply       = document.getElementById('btn-apply');
+    const btnCancel      = document.getElementById('btn-cancel');
+    const btnTakeCtrl    = document.getElementById('btn-take-control');
+    const btnPlus        = document.getElementById('btn-plus');
+    const btnMinus       = document.getElementById('btn-minus');
+    const inpH           = document.getElementById('inp-h');
+    const inpM           = document.getElementById('inp-m');
+    const inpS           = document.getElementById('inp-s');
+    const setPanel       = document.getElementById('set-panel');
+    const spBackdrop     = document.getElementById('sp-backdrop');
+    const roleBadge      = document.getElementById('role-badge');
 
     // ── State ─────────────────────────────────────────────────────────────────
     const LS_STATE = 'synced-timer-state';
@@ -605,6 +641,7 @@
     let lastHeartbeat = Date.now();
     let prevFinished  = false;
     let lastTickedSec = -1;
+    let videoBlobUrl  = null;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const pad = n => String(n).padStart(2, '0');
@@ -620,15 +657,20 @@
            + (Math.max(0, Math.min(59, parseInt(inpS.value) || 0)));
     }
 
-    // ── Render time ───────────────────────────────────────────────────────────
+    function syncInputs() {
+      inpH.value = state.inputH;
+      inpM.value = state.inputM;
+      inpS.value = state.inputS;
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
     function renderTimeDisplay(secs) {
       const h = Math.floor(secs / 3600);
       const m = Math.floor((secs % 3600) / 60);
       const s = secs % 60;
 
-      const colorClass = state.finished ? 'danger'
-                       : secs > 0 && secs <= 10  ? 'danger'
-                       : secs > 10 && secs <= 30 ? 'warning' : '';
+      const colorClass = state.finished || secs <= 10 ? 'danger'
+                       : secs <= 30 ? 'warning' : '';
 
       const dot   = `<div class="sep-dot"></div>`;
       const colon = `<div class="time-sep">${dot}${dot}</div>`;
@@ -647,12 +689,9 @@
       }
     }
 
-    // ── Render buttons ────────────────────────────────────────────────────────
     function renderButtons() {
       if (!isController) return;
-      const rem    = computeRemaining();
-      const active = state.running || (!state.finished && rem > 0);
-
+      const active = state.running || (!state.finished && computeRemaining() > 0);
       btnSet.style.display   = active ? 'none' : '';
       btnStart.style.display = active ? 'none' : '';
       btnPause.style.display = active ? '' : 'none';
@@ -660,13 +699,25 @@
       btnPause.textContent   = state.running ? 'Pause' : 'Resume';
     }
 
-    function triggerFinish() {
-      finishFlash.classList.remove('animate');
-      void finishFlash.offsetWidth;
-      finishFlash.classList.add('animate');
-      playFinishAlarm();
+    function renderUI() {
+      const rem = computeRemaining();
+      renderTimeDisplay(rem);
+      if (state.finished && !prevFinished) {
+        finishFlash.classList.remove('animate');
+        void finishFlash.offsetWidth;
+        finishFlash.classList.add('animate');
+        playFinishAlarm();
+      }
+      prevFinished = state.finished;
+      if (state.running && rem > 0 && rem <= 10 && rem !== lastTickedSec) {
+        lastTickedSec = rem;
+        playTick();
+      }
+      if (!state.running) lastTickedSec = -1;
+      renderButtons();
     }
 
+    // ── Mute ──────────────────────────────────────────────────────────────────
     function applyMuteUI() {
       btnMute.classList.toggle('muted', soundMuted);
       iconSound.style.display = soundMuted ? 'none' : '';
@@ -682,60 +733,8 @@
 
     applyMuteUI();
 
-    // ── Background video ──────────────────────────────────────────────────────
-    const bgVideo        = document.getElementById('bg-video');
-    const videoFileInput = document.getElementById('video-file-input');
-    const btnVideoPick   = document.getElementById('btn-video-pick');
-    const btnVideoClear  = document.getElementById('btn-video-clear');
-    const videoFilename  = document.getElementById('video-filename');
-
-    let videoBlobUrl = null;
-
-    // IndexedDB — stores the raw video File so other tabs can load it
-    const IDB_NAME  = 'synced-timer-db';
-    const IDB_STORE = 'video';
-    const IDB_KEY   = 'bg';
-
-    function openIDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(IDB_NAME, 1);
-        req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
-        req.onsuccess  = e => resolve(e.target.result);
-        req.onerror    = e => reject(e.target.error);
-      });
-    }
-
-    async function saveFileToIDB(file) {
-      const db = await openIDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).put(file, IDB_KEY);
-        tx.oncomplete = resolve;
-        tx.onerror    = e => reject(e.target.error);
-      });
-    }
-
-    async function loadFileFromIDB() {
-      const db = await openIDB();
-      return new Promise((resolve, reject) => {
-        const tx  = db.transaction(IDB_STORE, 'readonly');
-        const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
-        req.onsuccess = e => resolve(e.target.result || null);
-        req.onerror   = e => reject(e.target.error);
-      });
-    }
-
-    async function clearFileFromIDB() {
-      const db = await openIDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).delete(IDB_KEY);
-        tx.oncomplete = resolve;
-        tx.onerror    = e => reject(e.target.error);
-      });
-    }
-
-    function applyVideoFile(file) {
+    // ── Video ─────────────────────────────────────────────────────────────────
+    function attachVideo(file) {
       if (videoBlobUrl) URL.revokeObjectURL(videoBlobUrl);
       videoBlobUrl = URL.createObjectURL(file);
       bgVideo.src  = videoBlobUrl;
@@ -746,56 +745,42 @@
       btnVideoClear.classList.add('visible');
     }
 
-    async function setVideoSource(file) {
-      applyVideoFile(file);
-      await saveFileToIDB(file);
+    function detachVideo() {
+      if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
+      bgVideo.src = '';
+      document.body.classList.remove('has-video');
+    }
+
+    async function setVideo(file) {
+      attachVideo(file);
+      await idbPut(file);
       broadcast({ type: 'VIDEO_UPDATE' });
     }
 
     async function clearVideo() {
-      if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
-      bgVideo.src = '';
-      document.body.classList.remove('has-video');
+      detachVideo();
       videoFilename.textContent = 'No video';
       videoFilename.classList.remove('loaded');
       btnVideoClear.classList.remove('visible');
       videoFileInput.value = '';
-      await clearFileFromIDB();
+      await idbDelete();
       broadcast({ type: 'VIDEO_CLEAR' });
     }
 
-    async function syncVideoFromIDB() {
-      const file = await loadFileFromIDB();
-      if (file) applyVideoFile(file);
+    async function syncVideo() {
+      const file = await idbGet();
+      if (file) attachVideo(file);
     }
 
     btnVideoPick.addEventListener('click', () => videoFileInput.click());
     videoFileInput.addEventListener('change', () => {
-      if (videoFileInput.files[0]) setVideoSource(videoFileInput.files[0]);
+      if (videoFileInput.files[0]) setVideo(videoFileInput.files[0]);
     });
     btnVideoClear.addEventListener('click', clearVideo);
 
-    // Load video on startup (in case it was set in a previous session or other tab)
-    syncVideoFromIDB();
+    syncVideo();
 
-    // ── Full render ───────────────────────────────────────────────────────────
-    function renderUI() {
-      const rem = computeRemaining();
-      renderTimeDisplay(rem);
-      if (state.finished && !prevFinished) triggerFinish();
-      prevFinished = state.finished;
-
-      // Tick on each new second in the last 10
-      if (state.running && rem > 0 && rem <= 10 && rem !== lastTickedSec) {
-        lastTickedSec = rem;
-        playTick();
-      }
-      if (!state.running) lastTickedSec = -1;
-
-      renderButtons();
-    }
-
-    // ── localStorage ──────────────────────────────────────────────────────────
+    // ── State persistence ─────────────────────────────────────────────────────
     function saveState() {
       localStorage.setItem(LS_STATE, JSON.stringify(state));
     }
@@ -825,41 +810,21 @@
           lastHeartbeat = Date.now();
           break;
         case 'STATE_UPDATE':
-          if (!isController) {
-            state = data.state;
-            saveState();
-            renderUI();
-          }
+          if (!isController) { state = data.state; saveState(); renderUI(); }
           break;
         case 'VIDEO_UPDATE':
-          if (!isController) syncVideoFromIDB();
+          if (!isController) syncVideo();
           break;
         case 'VIDEO_CLEAR':
-          if (!isController) {
-            if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
-            bgVideo.src = '';
-            document.body.classList.remove('has-video');
-          }
+          if (!isController) detachVideo();
           break;
         case 'CLAIM_CONTROL':
-          if (isController) {
-            stopLoop();
-            isController = false;
-            applyDisplayUI();
-            startDisplayLoop();
-          }
+          if (isController) { stopLoop(); isController = false; applyDisplayUI(); startDisplayLoop(); }
           break;
       }
     };
 
-    // ── Role assignment ───────────────────────────────────────────────────────
-    function assignRole(role) {
-      if (roleDecided) return;
-      roleDecided = true;
-      if (role === 'controller') becomeController();
-      else becomeDisplay();
-    }
-
+    // ── Roles ─────────────────────────────────────────────────────────────────
     function applyControllerUI() {
       document.body.classList.remove('display-mode');
       roleBadge.className = 'role-badge controller';
@@ -872,21 +837,27 @@
       roleBadge.innerHTML = '<span class="sync-dot"></span>Live';
     }
 
-    function becomeController() {
+    function promoteToController() {
+      stopLoop();
       isController = true;
+      roleDecided  = true;
       applyControllerUI();
-      inpH.value = state.inputH;
-      inpM.value = state.inputM;
-      inpS.value = state.inputS;
+      syncInputs();
       startControllerLoop();
       renderUI();
     }
 
-    function becomeDisplay() {
-      isController = false;
-      applyDisplayUI();
-      startDisplayLoop();
-      renderUI();
+    function assignRole(role) {
+      if (roleDecided) return;
+      if (role === 'controller') {
+        promoteToController();
+      } else {
+        isController = false;
+        roleDecided  = true;
+        applyDisplayUI();
+        startDisplayLoop();
+        renderUI();
+      }
     }
 
     // ── Tick loops ────────────────────────────────────────────────────────────
@@ -896,60 +867,54 @@
 
     function startControllerLoop() {
       stopLoop();
-      tickInterval = setInterval(controllerTick, 500);
+      tickInterval = setInterval(() => {
+        broadcast({ type: 'HEARTBEAT' });
+        if (!state.running) return;
+        const rem = computeRemaining();
+        if (rem <= 0) {
+          state.running   = false;
+          state.remaining = 0;
+          state.startedAt = null;
+          state.finished  = true;
+          saveState();
+          broadcast({ type: 'STATE_UPDATE', state });
+        }
+        renderUI();
+      }, 500);
     }
 
     function startDisplayLoop() {
       stopLoop();
       tickInterval = setInterval(() => {
         renderUI();
-        // Auto-promote if controller has gone silent
         if (Date.now() - lastHeartbeat > 5000) {
           broadcast({ type: 'PING' });
           setTimeout(() => {
             if (!isController) {
               broadcast({ type: 'CLAIM_CONTROL' });
-              isController = true;
-              roleDecided  = true;
-              applyControllerUI();
-              inpH.value = state.inputH;
-              inpM.value = state.inputM;
-              inpS.value = state.inputS;
-              startControllerLoop();
-              renderUI();
+              promoteToController();
             }
           }, 400);
         }
       }, 200);
     }
 
-    function controllerTick() {
-      broadcast({ type: 'HEARTBEAT' });
-      if (!state.running) return;
-      const rem = computeRemaining();
-      if (rem <= 0) {
-        state.running   = false;
-        state.remaining = 0;
-        state.startedAt = null;
-        state.finished  = true;
-        saveState();
-        broadcast({ type: 'STATE_UPDATE', state });
-      }
+    // ── Controls ──────────────────────────────────────────────────────────────
+    function openSetPanel()  { setPanel.classList.add('open');    spBackdrop.classList.add('open'); }
+    function closeSetPanel() { setPanel.classList.remove('open'); spBackdrop.classList.remove('open'); }
+
+    function commitStateAndRender() {
+      saveState();
+      broadcast({ type: 'STATE_UPDATE', state });
       renderUI();
     }
 
-    // ── +/- ───────────────────────────────────────────────────────────────────
     function adjustMinutes(delta) {
       if (state.running || (!state.finished && state.remaining > 0)) {
-        // Adjust live timer
-        const newRem = Math.max(0, computeRemaining() + delta * 60);
-        state.remaining = newRem;
+        state.remaining = Math.max(0, computeRemaining() + delta * 60);
         state.startedAt = Date.now();
-        saveState();
-        broadcast({ type: 'STATE_UPDATE', state });
-        renderUI();
+        commitStateAndRender();
       } else {
-        // Adjust inputs
         const total = Math.max(0, inputToSeconds() + delta * 60);
         inpH.value = Math.floor(total / 3600);
         inpM.value = Math.floor((total % 3600) / 60);
@@ -958,16 +923,9 @@
       }
     }
 
-    btnPlus.addEventListener('click',  () => adjustMinutes(1));
-    btnMinus.addEventListener('click', () => adjustMinutes(-1));
-
-    // ── Set panel ─────────────────────────────────────────────────────────────
-    function openSetPanel()  { setPanel.classList.add('open');    spBackdrop.classList.add('open'); }
-    function closeSetPanel() { setPanel.classList.remove('open'); spBackdrop.classList.remove('open'); }
-
-    btnSet.addEventListener('click',      openSetPanel);
-    btnCancel.addEventListener('click',   closeSetPanel);
-    spBackdrop.addEventListener('click',  closeSetPanel);
+    btnSet.addEventListener('click',     openSetPanel);
+    btnCancel.addEventListener('click',  closeSetPanel);
+    spBackdrop.addEventListener('click', closeSetPanel);
 
     btnApply.addEventListener('click', () => {
       state.inputH = parseInt(inpH.value) || 0;
@@ -977,7 +935,6 @@
       closeSetPanel();
     });
 
-    // ── Main controls ─────────────────────────────────────────────────────────
     btnStart.addEventListener('click', () => {
       const total = inputToSeconds();
       if (total === 0) { openSetPanel(); return; }
@@ -989,10 +946,8 @@
       state.inputH       = parseInt(inpH.value) || 0;
       state.inputM       = parseInt(inpM.value) || 0;
       state.inputS       = parseInt(inpS.value) || 0;
-      saveState();
-      broadcast({ type: 'STATE_UPDATE', state });
       closeSetPanel();
-      renderUI();
+      commitStateAndRender();
     });
 
     btnPause.addEventListener('click', () => {
@@ -1004,40 +959,30 @@
         state.startedAt = Date.now();
         state.running   = true;
       }
-      saveState();
-      broadcast({ type: 'STATE_UPDATE', state });
-      renderUI();
+      commitStateAndRender();
     });
 
     btnReset.addEventListener('click', () => {
       state.running = false; state.remaining = 0;
       state.totalSeconds = 0; state.startedAt = null;
       state.finished = false;
-      saveState();
-      broadcast({ type: 'STATE_UPDATE', state });
       closeSetPanel();
-      renderUI();
+      commitStateAndRender();
     });
+
+    btnPlus.addEventListener('click',  () => adjustMinutes(1));
+    btnMinus.addEventListener('click', () => adjustMinutes(-1));
 
     btnTakeCtrl.addEventListener('click', () => {
       broadcast({ type: 'CLAIM_CONTROL' });
-      stopLoop();
-      isController = true; roleDecided = true;
-      applyControllerUI();
-      inpH.value = state.inputH;
-      inpM.value = state.inputM;
-      inpS.value = state.inputS;
-      startControllerLoop();
-      renderUI();
+      promoteToController();
     });
 
     inpM.addEventListener('blur', () => { inpM.value = Math.min(59, Math.max(0, parseInt(inpM.value)||0)); });
     inpS.addEventListener('blur', () => { inpS.value = Math.min(59, Math.max(0, parseInt(inpS.value)||0)); });
 
     document.addEventListener('keydown', e => {
-      if (e.code !== 'Space') return;
-      if (!isController) return;
-      // Don't intercept spacebar while typing in inputs or the panel is open
+      if (e.code !== 'Space' || !isController) return;
       if (document.activeElement.tagName === 'INPUT') return;
       if (setPanel.classList.contains('open')) return;
       e.preventDefault();
@@ -1049,6 +994,7 @@
     loadState();
     prevFinished = state.finished;
     renderTimeDisplay(computeRemaining());
+    renderButtons();
 
     broadcast({ type: 'PING' });
     setTimeout(() => assignRole('controller'), 400);
