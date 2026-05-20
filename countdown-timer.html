@@ -67,6 +67,7 @@
     .time-area {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 0;
@@ -317,6 +318,21 @@
       100% { opacity: 0; }
     }
 
+    /* ── Message ── */
+    .timer-message {
+      text-align: center;
+      font-size: clamp(1.8rem, 5.25vw, 4.2rem);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--cream);
+      opacity: 0.7;
+      margin-bottom: clamp(8px, 1.5vw, 24px);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .timer-message:empty { display: none; }
+
     /* ── Display mode ── */
     body.display-mode .controller-only { display: none !important; }
     body:not(.display-mode) .display-only { display: none !important; }
@@ -372,6 +388,36 @@
 
     body.has-video #bg-video,
     body.has-video #bg-overlay { display: block; }
+
+    /* ── Message row ── */
+    .sp-message-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .sp-message-row label {
+      padding-top: 8px;
+    }
+
+    .sp-message-row textarea {
+      width: 320px;
+      background: #0b0b0b;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      color: var(--cream);
+      font-family: 'Archivo', system-ui, sans-serif;
+      font-size: 0.9rem;
+      padding: 8px 12px;
+      outline: none;
+      resize: none;
+      transition: border-color 0.2s;
+    }
+
+    .sp-message-row textarea:focus { border-color: var(--yellow); }
+    .sp-message-row textarea::placeholder { color: #333; }
 
     /* ── Video picker row ── */
     .sp-video-row {
@@ -449,6 +495,7 @@
 
   <!-- Time -->
   <div class="time-area">
+    <div class="timer-message" id="timer-message"></div>
     <div class="time-display" id="time-display" data-groups="2"></div>
   </div>
 
@@ -489,6 +536,10 @@
         <label for="inp-s">Seconds</label>
         <input id="inp-s" type="number" min="0" max="59" value="5">
       </div>
+    </div>
+    <div class="sp-message-row">
+      <label class="sp-video-label" for="inp-message">Message</label>
+      <textarea id="inp-message" rows="2" placeholder="Shown above the timer…"></textarea>
     </div>
     <div class="sp-video-row">
       <span class="sp-video-label">Background</span>
@@ -599,6 +650,8 @@
     // ── DOM ───────────────────────────────────────────────────────────────────
     const bgVideo        = document.getElementById('bg-video');
     const videoFileInput = document.getElementById('video-file-input');
+    const timerMessage   = document.getElementById('timer-message');
+    const inpMessage     = document.getElementById('inp-message');
     const btnVideoPick   = document.getElementById('btn-video-pick');
     const btnVideoClear  = document.getElementById('btn-video-clear');
     const videoFilename  = document.getElementById('video-filename');
@@ -633,6 +686,7 @@
       running:      false,
       finished:     false,
       inputH: 0, inputM: 0, inputS: 5,
+      message: '',
     };
 
     let isController  = false;
@@ -658,9 +712,10 @@
     }
 
     function syncInputs() {
-      inpH.value = state.inputH;
-      inpM.value = state.inputM;
-      inpS.value = state.inputS;
+      inpH.value       = state.inputH;
+      inpM.value       = state.inputM;
+      inpS.value       = state.inputS;
+      inpMessage.value = state.message || '';
     }
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -714,6 +769,7 @@
         playTick();
       }
       if (!state.running) lastTickedSec = -1;
+      timerMessage.textContent = state.message || '';
       renderButtons();
     }
 
@@ -928,10 +984,12 @@
     spBackdrop.addEventListener('click', closeSetPanel);
 
     btnApply.addEventListener('click', () => {
-      state.inputH = parseInt(inpH.value) || 0;
-      state.inputM = parseInt(inpM.value) || 0;
-      state.inputS = parseInt(inpS.value) || 0;
+      state.inputH   = parseInt(inpH.value) || 0;
+      state.inputM   = parseInt(inpM.value) || 0;
+      state.inputS   = parseInt(inpS.value) || 0;
+      state.message  = inpMessage.value.trim();
       if (!state.running && state.remaining === 0) renderTimeDisplay(inputToSeconds());
+      commitStateAndRender();
       closeSetPanel();
     });
 
