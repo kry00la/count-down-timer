@@ -25,7 +25,7 @@ A fullscreen countdown timer that syncs in real time across multiple browser tab
 ## Controller — what you can do
 
 ### Set a time
-Click **Set Time** to open the time picker. Enter hours, minutes, and seconds, then click **Apply**.
+Click **Set Time** to open the settings panel. Enter hours, minutes, and seconds, then click **Apply**.
 
 ### Start / Pause / Resume / Reset
 - **Start** — begins the countdown from the configured time.
@@ -65,6 +65,16 @@ Open the **Set Time** panel — the speaker icon button next to Apply/Cancel tog
 
 ---
 
+## Background video
+
+Open the **Set Time** panel and click **Choose Video** to set a local video file as a full-screen background. A dark overlay is applied automatically so the timer remains readable. The video loops silently.
+
+The selected video is stored in `IndexedDB` and syncs to all Live tabs automatically — any open Live tab will load and play the same video without requiring a separate file pick. The video also persists across page refreshes.
+
+Click the **×** button next to the filename to remove the video from all tabs.
+
+---
+
 ## Live (Display) tabs
 
 Display tabs show the timer full-screen with no controls — ideal for projecting on a screen or a second monitor. Tick and finish sounds play on Live tabs too.
@@ -82,7 +92,7 @@ If the Controller tab is closed while the timer is running, a Live tab will dete
 
 ## Persistence
 
-Timer state is saved to `localStorage`, so refreshing a tab or reopening the file will restore the last known state (remaining time, running/paused status).
+Timer state is saved to `localStorage` and background video to `IndexedDB`, so refreshing a tab or reopening the file will restore the last known state (remaining time, running/paused status, and background video).
 
 ---
 
