@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synced Timer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #0b0b0b;
+      --cream:  #f0e8d0;
+      --yellow: #f5c518;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'Archivo', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      flex-shrink: 0;
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 5px 13px;
+      border-radius: 20px;
+      border: 1px solid currentColor;
+    }
+
+    .role-badge.detecting  { color: #444; }
+    .role-badge.controller { color: #4ade80; }
+    .role-badge.display    { color: var(--yellow); }
+
+    .sync-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+    /* ── Main time area ── */
+    .time-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      padding: 0 16px;
+    }
+
+    .time-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .time-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .time-digits {
+      font-family: 'Archivo Black', system-ui, sans-serif;
+      color: var(--cream);
+      line-height: 0.88;
+      letter-spacing: -0.01em;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.35s;
+    }
+
+    .time-display[data-groups="2"] .time-digits { font-size: clamp(72px, 27vw, 420px); }
+    .time-display[data-groups="3"] .time-digits { font-size: clamp(48px, 17.5vw, 280px); }
+
+    .time-digits.warning { color: #f59e0b; }
+    .time-digits.danger  { color: #ef4444; }
+
+    .time-label {
+      font-size: clamp(9px, 1.15vw, 18px);
+      letter-spacing: 0.07em;
+      font-weight: 500;
+      color: var(--cream);
+      opacity: 0.65;
+      margin-top: clamp(4px, 0.9vw, 14px);
+    }
+
+    .time-sep {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(10px, 3vw, 48px);
+      margin: 0 clamp(4px, 1.1vw, 20px);
+      padding-bottom: clamp(14px, 2.8vw, 44px);
+    }
+
+    .time-display[data-groups="3"] .time-sep {
+      gap: clamp(6px, 1.9vw, 30px);
+      margin: 0 clamp(3px, 0.75vw, 12px);
+      padding-bottom: clamp(9px, 1.9vw, 30px);
+    }
+
+    .sep-dot {
+      border-radius: 50%;
+      background: var(--cream);
+      flex-shrink: 0;
+      width: clamp(7px, 1.35vw, 21px);
+      height: clamp(7px, 1.35vw, 21px);
+    }
+
+    .time-display[data-groups="3"] .sep-dot {
+      width: clamp(5px, 0.88vw, 14px);
+      height: clamp(5px, 0.88vw, 14px);
+    }
+
+    /* ── Bottom bar ── */
+    .bottom-bar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 16px 28px 34px;
+      flex-shrink: 0;
+    }
+
+    .bottom-left  { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .bottom-right { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+    /* Pill button — filled */
+    .btn-pill {
+      background: var(--yellow);
+      color: #0b0b0b;
+      border: none;
+      border-radius: 40px;
+      padding: 13px 34px;
+      font-family: 'Archivo', system-ui, sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn-pill:hover  { background: #fdd835; }
+    .btn-pill:active { transform: scale(0.95); }
+    .btn-pill:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+    /* Pill button — outline */
+    .btn-outline {
+      background: transparent;
+      color: var(--yellow);
+      border: 2px solid var(--yellow);
+      border-radius: 40px;
+      padding: 11px 28px;
+      font-family: 'Archivo', system-ui, sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn-outline:hover  { background: rgba(245,197,24,0.10); }
+    .btn-outline:active { transform: scale(0.95); }
+
+    /* Circle button */
+    .btn-circle {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--yellow);
+      color: #0b0b0b;
+      border: none;
+      font-size: 1.65rem;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-circle:hover  { background: #fdd835; }
+    .btn-circle:active { transform: scale(0.93); }
+    .btn-circle:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Set-time panel (slides up) ── */
+    .sp-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.28s;
+      z-index: 90;
+    }
+
+    .sp-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .set-panel {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #111;
+      border-top: 1px solid #222;
+      padding: 28px 40px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      z-index: 100;
+    }
+
+    .set-panel.open { transform: translateY(0); }
+
+    .sp-title {
+      font-size: 0.65rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #4a4a4a;
+      font-weight: 600;
+    }
+
+    .sp-inputs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sp-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sp-group label {
+      font-size: 0.58rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #444;
+    }
+
+    .sp-group input {
+      width: 84px;
+      text-align: center;
+      background: #0b0b0b;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      color: var(--cream);
+      font-family: 'Archivo Black', system-ui, sans-serif;
+      font-size: 2.2rem;
+      padding: 10px 4px;
+      outline: none;
+      font-variant-numeric: tabular-nums;
+      transition: border-color 0.2s;
+      -moz-appearance: textfield;
+    }
+
+    .sp-group input::-webkit-outer-spin-button,
+    .sp-group input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    .sp-group input:focus { border-color: var(--yellow); }
+
+    .sp-colon {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #2e2e2e;
+      padding-bottom: 22px;
+    }
+
+    .sp-actions { display: flex; gap: 12px; }
+
+    /* ── Finish flash ── */
+    .finish-flash {
+      position: fixed;
+      inset: 0;
+      background: var(--yellow);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 200;
+    }
+
+    .finish-flash.animate {
+      animation: bigflash 0.9s ease-out forwards;
+    }
+
+    @keyframes bigflash {
+      0%   { opacity: 0.6; }
+      100% { opacity: 0; }
+    }
+
+    /* ── Display mode ── */
+    body.display-mode .controller-only { display: none !important; }
+    body:not(.display-mode) .display-only { display: none !important; }
+
+    /* Take Control: hidden until hover */
+    #btn-take-control {
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    body.display-mode:hover #btn-take-control {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="finish-flash" id="finish-flash"></div>
+  <div class="sp-backdrop" id="sp-backdrop"></div>
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <span class="role-badge detecting" id="role-badge">
+      <span class="sync-dot"></span>Detecting
+    </span>
+  </div>
+
+  <!-- Time -->
+  <div class="time-area">
+    <div class="time-display" id="time-display" data-groups="2"></div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom-bar">
+    <div class="bottom-left">
+      <button class="btn-outline controller-only" id="btn-set">Set Time</button>
+      <button class="btn-pill  controller-only" id="btn-start">Start</button>
+      <button class="btn-pill  controller-only" id="btn-pause" style="display:none">Pause</button>
+      <button class="btn-outline controller-only" id="btn-reset" style="display:none">Reset</button>
+      <button class="btn-circle display-only" id="btn-take-control" title="Take Control">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="bottom-right controller-only">
+      <button class="btn-circle" id="btn-plus"  title="+ 1 minute">+</button>
+      <button class="btn-circle" id="btn-minus" title="− 1 minute">−</button>
+    </div>
+  </div>
+
+  <!-- Set-time panel -->
+  <div class="set-panel" id="set-panel">
+    <div class="sp-title">Set Time</div>
+    <div class="sp-inputs">
+      <div class="sp-group">
+        <label for="inp-h">Hours</label>
+        <input id="inp-h" type="number" min="0" max="99" value="0">
+      </div>
+      <div class="sp-colon">:</div>
+      <div class="sp-group">
+        <label for="inp-m">Minutes</label>
+        <input id="inp-m" type="number" min="0" max="59" value="0">
+      </div>
+      <div class="sp-colon">:</div>
+      <div class="sp-group">
+        <label for="inp-s">Seconds</label>
+        <input id="inp-s" type="number" min="0" max="59" value="5">
+      </div>
+    </div>
+    <div class="sp-actions">
+      <button class="btn-pill"    id="btn-apply">Apply</button>
+      <button class="btn-outline" id="btn-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    // ── Identity ──────────────────────────────────────────────────────────────
+    const TAB_ID  = Math.random().toString(36).slice(2, 10);
+    const channel = new BroadcastChannel('synced-timer-v1');
+
+    // ── DOM ───────────────────────────────────────────────────────────────────
+    const timeDisplayEl = document.getElementById('time-display');
+    const finishFlash   = document.getElementById('finish-flash');
+    const btnStart      = document.getElementById('btn-start');
+    const btnPause      = document.getElementById('btn-pause');
+    const btnReset      = document.getElementById('btn-reset');
+    const btnSet        = document.getElementById('btn-set');
+    const btnApply      = document.getElementById('btn-apply');
+    const btnCancel     = document.getElementById('btn-cancel');
+    const btnTakeCtrl   = document.getElementById('btn-take-control');
+    const btnPlus       = document.getElementById('btn-plus');
+    const btnMinus      = document.getElementById('btn-minus');
+    const inpH          = document.getElementById('inp-h');
+    const inpM          = document.getElementById('inp-m');
+    const inpS          = document.getElementById('inp-s');
+    const setPanel      = document.getElementById('set-panel');
+    const spBackdrop    = document.getElementById('sp-backdrop');
+    const roleBadge     = document.getElementById('role-badge');
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    const LS_STATE = 'synced-timer-state';
+
+    let state = {
+      totalSeconds: 0,
+      remaining:    0,
+      startedAt:    null,
+      running:      false,
+      finished:     false,
+      inputH: 0, inputM: 0, inputS: 5,
+    };
+
+    let isController  = false;
+    let roleDecided   = false;
+    let tickInterval  = null;
+    let lastHeartbeat = Date.now();
+    let prevFinished  = false;
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const pad = n => String(n).padStart(2, '0');
+
+    function computeRemaining() {
+      if (!state.running || state.startedAt === null) return state.remaining;
+      return Math.max(0, state.remaining - Math.floor((Date.now() - state.startedAt) / 1000));
+    }
+
+    function inputToSeconds() {
+      return (Math.max(0, parseInt(inpH.value) || 0)) * 3600
+           + (Math.max(0, Math.min(59, parseInt(inpM.value) || 0))) * 60
+           + (Math.max(0, Math.min(59, parseInt(inpS.value) || 0)));
+    }
+
+    // ── Render time ───────────────────────────────────────────────────────────
+    function renderTimeDisplay(secs) {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+
+      const colorClass = state.finished ? 'danger'
+                       : secs > 0 && secs <= 10  ? 'danger'
+                       : secs > 10 && secs <= 30 ? 'warning' : '';
+
+      const dot   = `<div class="sep-dot"></div>`;
+      const colon = `<div class="time-sep">${dot}${dot}</div>`;
+      const group = (val, lbl) => `
+        <div class="time-group">
+          <div class="time-digits ${colorClass}">${pad(val)}</div>
+          <div class="time-label">${lbl}</div>
+        </div>`;
+
+      if (h > 0) {
+        timeDisplayEl.dataset.groups = '3';
+        timeDisplayEl.innerHTML = group(h,'Hours') + colon + group(m,'Minutes') + colon + group(s,'Seconds');
+      } else {
+        timeDisplayEl.dataset.groups = '2';
+        timeDisplayEl.innerHTML = group(m,'Minutes') + colon + group(s,'Seconds');
+      }
+    }
+
+    // ── Render buttons ────────────────────────────────────────────────────────
+    function renderButtons() {
+      if (!isController) return;
+      const rem    = computeRemaining();
+      const active = state.running || (!state.finished && rem > 0);
+
+      btnSet.style.display   = active ? 'none' : '';
+      btnStart.style.display = active ? 'none' : '';
+      btnPause.style.display = active ? '' : 'none';
+      btnReset.style.display = active ? '' : 'none';
+      btnPause.textContent   = state.running ? 'Pause' : 'Resume';
+    }
+
+    function triggerFinish() {
+      finishFlash.classList.remove('animate');
+      void finishFlash.offsetWidth;
+      finishFlash.classList.add('animate');
+    }
+
+    // ── Full render ───────────────────────────────────────────────────────────
+    function renderUI() {
+      const rem = computeRemaining();
+      renderTimeDisplay(rem);
+      if (state.finished && !prevFinished) triggerFinish();
+      prevFinished = state.finished;
+      renderButtons();
+    }
+
+    // ── localStorage ──────────────────────────────────────────────────────────
+    function saveState() {
+      localStorage.setItem(LS_STATE, JSON.stringify(state));
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(LS_STATE));
+        if (saved) state = { ...state, ...saved };
+      } catch (_) {}
+    }
+
+    // ── BroadcastChannel ──────────────────────────────────────────────────────
+    function broadcast(msg) {
+      channel.postMessage({ ...msg, from: TAB_ID });
+    }
+
+    channel.onmessage = ({ data }) => {
+      if (data.from === TAB_ID) return;
+      switch (data.type) {
+        case 'PING':
+          if (isController) broadcast({ type: 'PONG' });
+          break;
+        case 'PONG':
+          if (!roleDecided) assignRole('display');
+          break;
+        case 'HEARTBEAT':
+          lastHeartbeat = Date.now();
+          break;
+        case 'STATE_UPDATE':
+          if (!isController) {
+            state = data.state;
+            saveState();
+            renderUI();
+          }
+          break;
+        case 'CLAIM_CONTROL':
+          if (isController) {
+            stopLoop();
+            isController = false;
+            applyDisplayUI();
+            startDisplayLoop();
+          }
+          break;
+      }
+    };
+
+    // ── Role assignment ───────────────────────────────────────────────────────
+    function assignRole(role) {
+      if (roleDecided) return;
+      roleDecided = true;
+      if (role === 'controller') becomeController();
+      else becomeDisplay();
+    }
+
+    function applyControllerUI() {
+      document.body.classList.remove('display-mode');
+      roleBadge.className = 'role-badge controller';
+      roleBadge.innerHTML = '<span class="sync-dot"></span>Controller';
+    }
+
+    function applyDisplayUI() {
+      document.body.classList.add('display-mode');
+      roleBadge.className = 'role-badge display';
+      roleBadge.innerHTML = '<span class="sync-dot"></span>Live';
+    }
+
+    function becomeController() {
+      isController = true;
+      applyControllerUI();
+      inpH.value = state.inputH;
+      inpM.value = state.inputM;
+      inpS.value = state.inputS;
+      startControllerLoop();
+      renderUI();
+    }
+
+    function becomeDisplay() {
+      isController = false;
+      applyDisplayUI();
+      startDisplayLoop();
+      renderUI();
+    }
+
+    // ── Tick loops ────────────────────────────────────────────────────────────
+    function stopLoop() {
+      if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+    }
+
+    function startControllerLoop() {
+      stopLoop();
+      tickInterval = setInterval(controllerTick, 500);
+    }
+
+    function startDisplayLoop() {
+      stopLoop();
+      tickInterval = setInterval(() => {
+        renderUI();
+        // Auto-promote if controller has gone silent
+        if (Date.now() - lastHeartbeat > 5000) {
+          broadcast({ type: 'PING' });
+          setTimeout(() => {
+            if (!isController) {
+              broadcast({ type: 'CLAIM_CONTROL' });
+              isController = true;
+              roleDecided  = true;
+              applyControllerUI();
+              inpH.value = state.inputH;
+              inpM.value = state.inputM;
+              inpS.value = state.inputS;
+              startControllerLoop();
+              renderUI();
+            }
+          }, 400);
+        }
+      }, 200);
+    }
+
+    function controllerTick() {
+      broadcast({ type: 'HEARTBEAT' });
+      if (!state.running) return;
+      const rem = computeRemaining();
+      renderTimeDisplay(rem);
+      if (rem <= 0) {
+        state.running   = false;
+        state.remaining = 0;
+        state.startedAt = null;
+        state.finished  = true;
+        saveState();
+        broadcast({ type: 'STATE_UPDATE', state });
+        renderUI();
+      }
+    }
+
+    // ── +/- ───────────────────────────────────────────────────────────────────
+    function adjustMinutes(delta) {
+      if (state.running || (!state.finished && state.remaining > 0)) {
+        // Adjust live timer
+        const newRem = Math.max(0, computeRemaining() + delta * 60);
+        state.remaining = newRem;
+        state.startedAt = Date.now();
+        saveState();
+        broadcast({ type: 'STATE_UPDATE', state });
+        renderUI();
+      } else {
+        // Adjust inputs
+        const total = Math.max(0, inputToSeconds() + delta * 60);
+        inpH.value = Math.floor(total / 3600);
+        inpM.value = Math.floor((total % 3600) / 60);
+        inpS.value = total % 60;
+        renderTimeDisplay(total);
+      }
+    }
+
+    btnPlus.addEventListener('click',  () => adjustMinutes(1));
+    btnMinus.addEventListener('click', () => adjustMinutes(-1));
+
+    // ── Set panel ─────────────────────────────────────────────────────────────
+    function openSetPanel()  { setPanel.classList.add('open');    spBackdrop.classList.add('open'); }
+    function closeSetPanel() { setPanel.classList.remove('open'); spBackdrop.classList.remove('open'); }
+
+    btnSet.addEventListener('click',      openSetPanel);
+    btnCancel.addEventListener('click',   closeSetPanel);
+    spBackdrop.addEventListener('click',  closeSetPanel);
+
+    btnApply.addEventListener('click', () => {
+      state.inputH = parseInt(inpH.value) || 0;
+      state.inputM = parseInt(inpM.value) || 0;
+      state.inputS = parseInt(inpS.value) || 0;
+      if (!state.running && state.remaining === 0) renderTimeDisplay(inputToSeconds());
+      closeSetPanel();
+    });
+
+    // ── Main controls ─────────────────────────────────────────────────────────
+    btnStart.addEventListener('click', () => {
+      const total = inputToSeconds();
+      if (total === 0) { openSetPanel(); return; }
+      state.totalSeconds = total;
+      state.remaining    = total;
+      state.startedAt    = Date.now();
+      state.running      = true;
+      state.finished     = false;
+      state.inputH       = parseInt(inpH.value) || 0;
+      state.inputM       = parseInt(inpM.value) || 0;
+      state.inputS       = parseInt(inpS.value) || 0;
+      saveState();
+      broadcast({ type: 'STATE_UPDATE', state });
+      closeSetPanel();
+      renderUI();
+    });
+
+    btnPause.addEventListener('click', () => {
+      if (state.running) {
+        state.remaining = computeRemaining();
+        state.running   = false;
+        state.startedAt = null;
+      } else {
+        state.startedAt = Date.now();
+        state.running   = true;
+      }
+      saveState();
+      broadcast({ type: 'STATE_UPDATE', state });
+      renderUI();
+    });
+
+    btnReset.addEventListener('click', () => {
+      state.running = false; state.remaining = 0;
+      state.totalSeconds = 0; state.startedAt = null;
+      state.finished = false;
+      saveState();
+      broadcast({ type: 'STATE_UPDATE', state });
+      closeSetPanel();
+      renderUI();
+    });
+
+    btnTakeCtrl.addEventListener('click', () => {
+      broadcast({ type: 'CLAIM_CONTROL' });
+      stopLoop();
+      isController = true; roleDecided = true;
+      applyControllerUI();
+      inpH.value = state.inputH;
+      inpM.value = state.inputM;
+      inpS.value = state.inputS;
+      startControllerLoop();
+      renderUI();
+    });
+
+    inpM.addEventListener('blur', () => { inpM.value = Math.min(59, Math.max(0, parseInt(inpM.value)||0)); });
+    inpS.addEventListener('blur', () => { inpS.value = Math.min(59, Math.max(0, parseInt(inpS.value)||0)); });
+
+    // ── Startup ───────────────────────────────────────────────────────────────
+    loadState();
+    prevFinished = state.finished;
+    renderTimeDisplay(computeRemaining());
+
+    broadcast({ type: 'PING' });
+    setTimeout(() => assignRole('controller'), 400);
+  </script>
+</body>
+</html>
