@@ -350,11 +350,95 @@
 
     #btn-mute:hover { border-color: #444; color: #888; }
     #btn-mute.muted { border-color: #ef4444; color: #ef4444; }
+
+    /* ── Background video ── */
+    #bg-video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -2;
+      display: none;
+    }
+
+    #bg-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: -1;
+      display: none;
+    }
+
+    body.has-video #bg-video,
+    body.has-video #bg-overlay { display: block; }
+
+    /* ── Video picker row ── */
+    .sp-video-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .sp-video-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #444;
+      white-space: nowrap;
+    }
+
+    .btn-video-pick {
+      background: transparent;
+      color: var(--cream);
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 7px 16px;
+      font-family: 'Archivo', system-ui, sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-video-pick:hover { border-color: #555; color: #fff; }
+
+    #video-filename {
+      font-size: 0.78rem;
+      color: #555;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #video-filename.loaded { color: #4ade80; }
+
+    .btn-video-clear {
+      background: none;
+      border: none;
+      color: #444;
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 0 2px;
+      transition: color 0.2s;
+      display: none;
+    }
+
+    .btn-video-clear:hover { color: #ef4444; }
+    .btn-video-clear.visible { display: block; }
   </style>
 </head>
 <body>
+  <video id="bg-video" autoplay muted loop playsinline></video>
+  <div id="bg-overlay"></div>
   <div class="finish-flash" id="finish-flash"></div>
   <div class="sp-backdrop" id="sp-backdrop"></div>
+  <input type="file" id="video-file-input" accept="video/*" style="display:none">
 
   <!-- Top bar -->
   <div class="top-bar">
@@ -405,6 +489,12 @@
         <label for="inp-s">Seconds</label>
         <input id="inp-s" type="number" min="0" max="59" value="5">
       </div>
+    </div>
+    <div class="sp-video-row">
+      <span class="sp-video-label">Background</span>
+      <button class="btn-video-pick" id="btn-video-pick">Choose Video</button>
+      <span id="video-filename">No video</span>
+      <button class="btn-video-clear" id="btn-video-clear" title="Remove video">&times;</button>
     </div>
     <div class="sp-actions">
       <button class="btn-pill"    id="btn-apply">Apply</button>
@@ -592,6 +682,102 @@
 
     applyMuteUI();
 
+    // ── Background video ──────────────────────────────────────────────────────
+    const bgVideo        = document.getElementById('bg-video');
+    const videoFileInput = document.getElementById('video-file-input');
+    const btnVideoPick   = document.getElementById('btn-video-pick');
+    const btnVideoClear  = document.getElementById('btn-video-clear');
+    const videoFilename  = document.getElementById('video-filename');
+
+    let videoBlobUrl = null;
+
+    // IndexedDB — stores the raw video File so other tabs can load it
+    const IDB_NAME  = 'synced-timer-db';
+    const IDB_STORE = 'video';
+    const IDB_KEY   = 'bg';
+
+    function openIDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+        req.onsuccess  = e => resolve(e.target.result);
+        req.onerror    = e => reject(e.target.error);
+      });
+    }
+
+    async function saveFileToIDB(file) {
+      const db = await openIDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(file, IDB_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror    = e => reject(e.target.error);
+      });
+    }
+
+    async function loadFileFromIDB() {
+      const db = await openIDB();
+      return new Promise((resolve, reject) => {
+        const tx  = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+        req.onsuccess = e => resolve(e.target.result || null);
+        req.onerror   = e => reject(e.target.error);
+      });
+    }
+
+    async function clearFileFromIDB() {
+      const db = await openIDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(IDB_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror    = e => reject(e.target.error);
+      });
+    }
+
+    function applyVideoFile(file) {
+      if (videoBlobUrl) URL.revokeObjectURL(videoBlobUrl);
+      videoBlobUrl = URL.createObjectURL(file);
+      bgVideo.src  = videoBlobUrl;
+      bgVideo.play();
+      document.body.classList.add('has-video');
+      videoFilename.textContent = file.name;
+      videoFilename.classList.add('loaded');
+      btnVideoClear.classList.add('visible');
+    }
+
+    async function setVideoSource(file) {
+      applyVideoFile(file);
+      await saveFileToIDB(file);
+      broadcast({ type: 'VIDEO_UPDATE' });
+    }
+
+    async function clearVideo() {
+      if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
+      bgVideo.src = '';
+      document.body.classList.remove('has-video');
+      videoFilename.textContent = 'No video';
+      videoFilename.classList.remove('loaded');
+      btnVideoClear.classList.remove('visible');
+      videoFileInput.value = '';
+      await clearFileFromIDB();
+      broadcast({ type: 'VIDEO_CLEAR' });
+    }
+
+    async function syncVideoFromIDB() {
+      const file = await loadFileFromIDB();
+      if (file) applyVideoFile(file);
+    }
+
+    btnVideoPick.addEventListener('click', () => videoFileInput.click());
+    videoFileInput.addEventListener('change', () => {
+      if (videoFileInput.files[0]) setVideoSource(videoFileInput.files[0]);
+    });
+    btnVideoClear.addEventListener('click', clearVideo);
+
+    // Load video on startup (in case it was set in a previous session or other tab)
+    syncVideoFromIDB();
+
     // ── Full render ───────────────────────────────────────────────────────────
     function renderUI() {
       const rem = computeRemaining();
@@ -643,6 +829,16 @@
             state = data.state;
             saveState();
             renderUI();
+          }
+          break;
+        case 'VIDEO_UPDATE':
+          if (!isController) syncVideoFromIDB();
+          break;
+        case 'VIDEO_CLEAR':
+          if (!isController) {
+            if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
+            bgVideo.src = '';
+            document.body.classList.remove('has-video');
           }
           break;
         case 'CLAIM_CONTROL':
