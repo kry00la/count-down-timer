@@ -731,7 +731,6 @@
       broadcast({ type: 'HEARTBEAT' });
       if (!state.running) return;
       const rem = computeRemaining();
-      renderTimeDisplay(rem);
       if (rem <= 0) {
         state.running   = false;
         state.remaining = 0;
@@ -739,8 +738,8 @@
         state.finished  = true;
         saveState();
         broadcast({ type: 'STATE_UPDATE', state });
-        renderUI();
       }
+      renderUI();
     }
 
     // ── +/- ───────────────────────────────────────────────────────────────────
